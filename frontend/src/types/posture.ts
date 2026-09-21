@@ -6,6 +6,8 @@ export interface PostureMetrics {
   shoulder_tilt: number;
   raw_vertical_distance?: number;
   shoulder_span?: number;
+  vertical_slouch_ratio?: number;
+  ear_shoulder_angle?: number;
 }
 
 export interface SessionStats {
