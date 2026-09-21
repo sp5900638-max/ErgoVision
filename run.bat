@@ -4,14 +4,14 @@ cd /d "%~dp0"
 
 echo ========================================================
 echo   ErgoVision - Integrated Real-Time Posture Monitor
-echo   Serving Frontend and Backend together on:
-echo   http://localhost:8000
+echo   Hosting Frontend, API, and WebSockets on one server!
+echo   Opening: http://localhost:8000
 echo ========================================================
 echo.
 
-:: Open default browser after 2 seconds
+:: Open the browser after 2 seconds in background
 start "" cmd /c "timeout /t 2 /nobreak >nul & start http://localhost:8000"
 
-:: Start the unified FastAPI server
+:: Start the unified server
 .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
 pause

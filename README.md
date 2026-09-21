@@ -98,36 +98,37 @@ c:/CV/
 
 ---
 
-### 2. Backend Setup & Run
+### 2. Quick Start: Single Unified Server (Integrated Mode)
 
-1. Navigate to the backend directory and activate the virtual environment:
-   ```powershell
-   # In root c:\CV\
-   .\.venv\Scripts\Activate.ps1
-   ```
+Run both the React frontend and FastAPI backend together on **one server** (`http://localhost:8000`):
 
-2. Install dependencies:
-   ```powershell
-   pip install -r backend/requirements.txt
-   ```
+#### Method A: Double-Click
+Double-click **`start.bat`** (or **`run.bat`**) in `C:\CV`. It launches the server and automatically opens `http://localhost:8000` in your browser!
 
-3. Start the FastAPI development server:
-   ```powershell
-   python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-   The backend will be available at `http://localhost:8000`.
-   - Interactive Swagger API docs: `http://localhost:8000/docs`
-   - Health check: `http://localhost:8000/api/health`
-   - WebSocket streaming endpoint: `ws://localhost:8000/ws/posture`
+#### Method B: Terminal Command
+```powershell
+# From C:\CV
+.\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+```
+Open **[http://localhost:8000](http://localhost:8000)** in your browser.
 
 ---
 
-### 3. Frontend Setup & Run
+### 3. Decoupled Development Mode (Hot Reloading)
 
-1. Open a separate terminal and navigate to the `frontend/` directory:
+If you are developing the frontend and want Vite hot-module replacement (HMR):
+
+1. **Terminal 1 (Backend):**
    ```powershell
-   cd c:\CV\frontend
+   .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
+
+2. **Terminal 2 (Frontend):**
+   ```powershell
+   cd frontend
+   npm.cmd run dev
+   ```
+   Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
 2. Install Node dependencies:
    ```powershell

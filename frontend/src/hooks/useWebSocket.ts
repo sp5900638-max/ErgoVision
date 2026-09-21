@@ -15,8 +15,17 @@ interface UseWebSocketReturn {
   fps: number;
 }
 
+function getDefaultWsUrl(): string {
+  if (typeof window === 'undefined') return 'ws://localhost:8000/ws/posture';
+  if (window.location.port === '5173') {
+    return 'ws://localhost:8000/ws/posture';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws/posture`;
+}
+
 export function useWebSocket({
-  url = 'ws://localhost:8000/ws/posture',
+  url = getDefaultWsUrl(),
   autoConnect = true,
 }: UseWebSocketOptions = {}): UseWebSocketReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
