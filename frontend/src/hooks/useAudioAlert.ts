@@ -1,12 +1,27 @@
+/**
+ * Web Audio API Alert Chime Generator
+ * Provides dual-tone soft notification chimes.
+ * Automatically suppresses chime playback when userSpeaking is true.
+ */
+
 import { useState, useRef, useCallback, useEffect } from 'react';
+
+interface UseAudioAlertProps {
+  throttleSeconds?: number;
+  userSpeaking?: boolean;
+}
 
 interface UseAudioAlertReturn {
   isMuted: boolean;
   toggleMute: () => void;
   playAlertSound: () => void;
+  isAutoSuppressed: boolean;
 }
 
-export function useAudioAlert(throttleSeconds = 4.0): UseAudioAlertReturn {
+export function useAudioAlert({
+  throttleSeconds = 5.0,
+  userSpeaking = false,
+}: UseAudioAlertProps = {}): UseAudioAlertReturn {
   const [isMuted, setIsMuted] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('posture_audio_muted');
@@ -21,7 +36,9 @@ export function useAudioAlert(throttleSeconds = 4.0): UseAudioAlertReturn {
 
   const initAudioContext = useCallback(() => {
     if (!audioCtxRef.current) {
-      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtxClass =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtxClass) {
         audioCtxRef.current = new AudioCtxClass();
       }
@@ -44,9 +61,9 @@ export function useAudioAlert(throttleSeconds = 4.0): UseAudioAlertReturn {
     });
   }, [initAudioContext]);
 
-  // Plays a dual-tone gentle notification chime
+  // Plays a dual-tone gentle notification chime unless muted or user is speaking
   const playAlertSound = useCallback(() => {
-    if (isMuted) return;
+    if (isMuted || userSpeaking) return;
 
     const now = Date.now();
     if (now - lastAlertTimestampRef.current < throttleSeconds * 1000) {
@@ -78,7 +95,7 @@ export function useAudioAlert(throttleSeconds = 4.0): UseAudioAlertReturn {
     } catch (e) {
       console.warn('Audio alert playback error:', e);
     }
-  }, [isMuted, throttleSeconds, initAudioContext]);
+  }, [isMuted, userSpeaking, throttleSeconds, initAudioContext]);
 
   useEffect(() => {
     const handleFirstGesture = () => {
@@ -94,7 +111,7 @@ export function useAudioAlert(throttleSeconds = 4.0): UseAudioAlertReturn {
       window.removeEventListener('click', handleFirstGesture);
       window.removeEventListener('keydown', handleFirstGesture);
       if (audioCtxRef.current) {
-        audioCtxRef.current.close();
+        audioCtxRef.current.close().catch(() => {});
       }
     };
   }, [initAudioContext]);
@@ -103,5 +120,6 @@ export function useAudioAlert(throttleSeconds = 4.0): UseAudioAlertReturn {
     isMuted,
     toggleMute,
     playAlertSound,
+    isAutoSuppressed: Boolean(userSpeaking && !isMuted),
   };
 }

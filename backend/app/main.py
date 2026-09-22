@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse
 from .api.endpoints import router as api_router
 from .api.websocket import router as ws_router
 from .core.state import get_tracker
+from .db.database import Base, engine
+from .db import models  # Ensure models are imported for metadata creation
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +27,8 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "di
 async def lifespan(app: FastAPI):
     """Handles startup initialization and graceful shutdown."""
     logger.info("Initializing Posture Monitor Backend service...")
+    Base.metadata.create_all(bind=engine)
+    logger.info("SQLite database tables verified/created.")
     yield
     logger.info("Shutting down Posture Monitor Backend service...")
     tracker = get_tracker()

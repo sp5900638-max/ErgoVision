@@ -1,13 +1,31 @@
 import React, { useState } from 'react';
-import { Camera, VideoOff, Crosshair, RotateCcw, Volume2, VolumeX, Check } from 'lucide-react';
+import {
+  Camera,
+  VideoOff,
+  Crosshair,
+  RotateCcw,
+  Volume2,
+  VolumeX,
+  Check,
+  Activity,
+  BarChart3,
+  Mic,
+  MicOff,
+} from 'lucide-react';
 
 interface ControlsProps {
   isStreaming: boolean;
   onToggleCamera: () => void;
-  onCalibrate: () => Promise<void>;
-  onResetSession: () => Promise<void>;
+  onCalibrate: () => Promise<void> | void;
+  onResetSession: () => Promise<void> | void;
   isMuted: boolean;
   onToggleMute: () => void;
+  userSpeaking: boolean;
+  isMicActive: boolean;
+  onToggleMic: () => void;
+  onOpenStretchModal: () => void;
+  onOpenAnalyticsModal: () => void;
+  consecutivePoorCount: number;
 }
 
 export const Controls: React.FC<ControlsProps> = ({
@@ -17,6 +35,12 @@ export const Controls: React.FC<ControlsProps> = ({
   onResetSession,
   isMuted,
   onToggleMute,
+  userSpeaking,
+  isMicActive,
+  onToggleMic,
+  onOpenStretchModal,
+  onOpenAnalyticsModal,
+  consecutivePoorCount,
 }) => {
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -47,22 +71,23 @@ export const Controls: React.FC<ControlsProps> = ({
       {/* Primary Camera Action */}
       <div className="flex items-center space-x-2">
         <button
+          type="button"
           onClick={onToggleCamera}
           className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-medium text-sm transition-all shadow-md cursor-pointer ${
             isStreaming
               ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30'
-              : 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-blue-600/30'
+              : 'bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white shadow-indigo-600/30'
           }`}
         >
           {isStreaming ? (
             <>
               <VideoOff className="w-4 h-4" />
-              <span>Stop Camera</span>
+              <span>Stop Monitoring</span>
             </>
           ) : (
             <>
               <Camera className="w-4 h-4" />
-              <span>Start Camera</span>
+              <span>Start Monitoring</span>
             </>
           )}
         </button>
@@ -72,6 +97,7 @@ export const Controls: React.FC<ControlsProps> = ({
       <div className="flex items-center flex-wrap gap-2">
         {/* Calibrate Posture */}
         <button
+          type="button"
           onClick={handleCalibrate}
           disabled={!isStreaming || isCalibrating}
           title="Sit in your natural ideal upright posture and click to calibrate"
@@ -80,7 +106,7 @@ export const Controls: React.FC<ControlsProps> = ({
               ? 'opacity-40 cursor-not-allowed bg-slate-800/50 text-slate-500 border-slate-800'
               : justCalibrated
               ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-              : 'bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700 hover:border-slate-600'
+              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-slate-600'
           }`}
         >
           {justCalibrated ? (
@@ -90,25 +116,74 @@ export const Controls: React.FC<ControlsProps> = ({
             </>
           ) : (
             <>
-              <Crosshair className={`w-4 h-4 text-indigo-400 ${isCalibrating ? 'animate-spin' : ''}`} />
-              <span>Calibrate Posture</span>
+              <Crosshair className={`w-4 h-4 text-cyan-400 ${isCalibrating ? 'animate-spin' : ''}`} />
+              <span>Calibrate Baseline</span>
             </>
           )}
         </button>
 
-        {/* Reset Session */}
+        {/* Guided Stretches Modal Trigger */}
         <button
-          onClick={handleReset}
-          disabled={isResetting}
-          title="Reset timer and posture statistics"
-          className="flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-750 active:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition-all cursor-pointer"
+          type="button"
+          onClick={onOpenStretchModal}
+          title="Open Guided Micro-Break Stretch exercises with CV hold verification"
+          className="relative flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition-all cursor-pointer"
         >
-          <RotateCcw className={`w-4 h-4 text-amber-400 ${isResetting ? 'animate-spin' : ''}`} />
-          <span>Reset Session</span>
+          <Activity className="w-4 h-4 text-indigo-400" />
+          <span>Guided Stretches</span>
+          {consecutivePoorCount > 0 && (
+            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white">
+              {consecutivePoorCount}/3
+            </span>
+          )}
+        </button>
+
+        {/* Analytics Report Modal Trigger */}
+        <button
+          type="button"
+          onClick={onOpenAnalyticsModal}
+          title="View detailed ergonomic telemetry and hourly degradation report"
+          className="flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition-all cursor-pointer"
+        >
+          <BarChart3 className="w-4 h-4 text-cyan-400" />
+          <span>Analytics Report</span>
+        </button>
+
+        {/* Speech Detection Mic Toggle */}
+        <button
+          type="button"
+          onClick={onToggleMic}
+          title={
+            isMicActive
+              ? userSpeaking
+                ? 'Speaking detected — alerts auto-suppressed!'
+                : 'Mic active for speech detection auto-mute'
+              : 'Enable mic for call/speech auto-mute'
+          }
+          className={`flex items-center space-x-1.5 px-3 py-2.5 rounded-xl text-sm font-medium border transition-all cursor-pointer ${
+            isMicActive
+              ? userSpeaking
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                : 'bg-slate-800 text-emerald-400 border-emerald-500/30'
+              : 'bg-slate-800/60 text-slate-500 border-slate-800'
+          }`}
+        >
+          {isMicActive ? (
+            <>
+              <Mic className="w-4 h-4" />
+              <span className="text-xs">{userSpeaking ? 'In Call' : 'Auto-Mute'}</span>
+            </>
+          ) : (
+            <>
+              <MicOff className="w-4 h-4" />
+              <span className="text-xs">Mic Off</span>
+            </>
+          )}
         </button>
 
         {/* Mute Audio Alerts */}
         <button
+          type="button"
           onClick={onToggleMute}
           title={isMuted ? 'Unmute Audio Alerts' : 'Mute Audio Alerts'}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-all cursor-pointer ${
@@ -125,9 +200,21 @@ export const Controls: React.FC<ControlsProps> = ({
           ) : (
             <>
               <Volume2 className="w-4 h-4 text-blue-400" />
-              <span>Alerts On</span>
+              <span>Chimes On</span>
             </>
           )}
+        </button>
+
+        {/* Reset Session */}
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={isResetting}
+          title="Reset session telemetry and timer"
+          className="flex items-center space-x-2 px-3 py-2.5 rounded-xl text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
+        >
+          <RotateCcw className={`w-4 h-4 text-slate-400 ${isResetting ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline">Reset</span>
         </button>
       </div>
     </div>

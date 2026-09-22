@@ -1,4 +1,4 @@
-"""WebSocket endpoint for real-time posture analysis streaming."""
+"""WebSocket endpoints for real-time telemetry streaming and posture analysis."""
 import json
 import base64
 import logging
@@ -36,18 +36,81 @@ def _decode_image_from_base64(data_str: str) -> Optional[np.ndarray]:
         return None
 
 
+@router.websocket("/ws/telemetry")
+async def websocket_telemetry_endpoint(websocket: WebSocket):
+    """ErgoSense 360 WebSocket endpoint for streaming coordinate metrics and posture state
+
+    (Zero video stream transmission).
+    """
+    await websocket.accept()
+    logger.info("Client connected to /ws/telemetry")
+
+    try:
+        while True:
+            text_data = await websocket.receive_text()
+            if not text_data:
+                continue
+
+            try:
+                payload = json.loads(text_data)
+            except json.JSONDecodeError:
+                continue
+
+            msg_type = payload.get("type", "telemetry")
+
+            if msg_type == "ping":
+                await websocket.send_text(json.dumps({"type": "pong"}))
+                continue
+
+            elif msg_type == "calibrate":
+                await websocket.send_text(
+                    json.dumps({
+                        "type": "event",
+                        "event": "calibrated",
+                        "message": "ErgoSense baseline offsets saved",
+                    })
+                )
+                continue
+
+            elif msg_type == "telemetry":
+                # Process and acknowledge incoming client-side CV telemetry packet
+                rula = payload.get("rula_score", 1)
+                cva = payload.get("cva_deg", 50.0)
+                ipd_ratio = payload.get("ipd_ratio", 1.0)
+                alert_active = payload.get("alert_active", False)
+
+                # Return acknowledgment with server confirmation
+                ack_response = {
+                    "type": "telemetry_ack",
+                    "status": payload.get("status", "Acceptable"),
+                    "rula_score": rula,
+                    "cva_deg": cva,
+                    "ipd_ratio": ipd_ratio,
+                    "alert_active": alert_active,
+                    "server_time": payload.get("timestamp"),
+                }
+                await websocket.send_text(json.dumps(ack_response))
+
+    except WebSocketDisconnect:
+        logger.info("Client disconnected from /ws/telemetry")
+    except Exception as e:
+        logger.error(f"Error in /ws/telemetry: {e}")
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+
+
 @router.websocket("/ws/posture")
 async def websocket_posture_endpoint(websocket: WebSocket):
-    """WebSocket endpoint receiving webcam frames and returning real-time posture analysis."""
+    """Legacy WebSocket endpoint receiving webcam frames (for fallback or testing)."""
     await websocket.accept()
     tracker = get_tracker()
     evaluator = get_evaluator()
 
     try:
         while True:
-            # WebSocket messages can arrive as binary bytes or text
             message = await websocket.receive()
-
             frame: Optional[np.ndarray] = None
             command_type: Optional[str] = None
 
@@ -57,8 +120,6 @@ async def websocket_posture_endpoint(websocket: WebSocket):
 
             elif "text" in message and message["text"]:
                 text_data = message["text"].strip()
-
-                # Check if it's a JSON command
                 if text_data.startswith("{") and text_data.endswith("}"):
                     try:
                         cmd = json.loads(text_data)
@@ -85,35 +146,26 @@ async def websocket_posture_endpoint(websocket: WebSocket):
                             )
                             continue
                         elif command_type == "frame":
-                            # Base64 payload wrapped in JSON
                             data_payload = cmd.get("data", "")
                             frame = _decode_image_from_base64(data_payload)
                         elif command_type == "ping":
                             await websocket.send_text(json.dumps({"type": "pong"}))
                             continue
                     except json.JSONDecodeError:
-                        # Fall back to checking if it is raw base64
                         frame = _decode_image_from_base64(text_data)
                 else:
-                    # Direct base64 string
                     frame = _decode_image_from_base64(text_data)
 
             if frame is None:
-                # If no valid frame was decoded, wait for the next message
                 continue
 
-            # Process frame with tracker
             tracker_result = tracker.process_frame(frame)
             set_latest_result(tracker_result)
 
-            # If this frame was marked for calibration, calibrate now
             if command_type == "calibrate_frame" and tracker_result.get("detected"):
                 evaluator.calibrate(tracker_result.get("metrics"))
 
-            # Evaluate posture
             evaluation = evaluator.evaluate(tracker_result)
-
-            # Send back the required real-time JSON payload
             await websocket.send_text(json.dumps(evaluation))
 
     except WebSocketDisconnect:

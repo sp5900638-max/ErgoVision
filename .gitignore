@@ -34,3 +34,7 @@ yarn-error.log*
 Thumbs.db
 push.ps1
 
+# Databases
+*.db
+*.sqlite3
+ergosense.db
