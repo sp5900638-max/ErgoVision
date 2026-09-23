@@ -1,10 +1,13 @@
 @echo off
-title ErgoVision - AI Posture Monitor
+title ErgoSense 360 - AI Posture & Vision Monitor
 cd /d "%~dp0"
 
 echo ========================================================
-echo   ErgoVision - Integrated Real-Time Posture Monitor
+echo   ErgoSense 360 - Real-Time Ergonomic & Vision Monitor
 echo   Starting server on http://127.0.0.1:8000 ...
+echo   App URL: http://127.0.0.1:8000
+echo   API Docs: http://127.0.0.1:8000/docs
+echo   Telemetry WS: ws://127.0.0.1:8000/ws/telemetry
 echo ========================================================
 echo.
 
