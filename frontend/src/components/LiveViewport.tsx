@@ -1,11 +1,15 @@
 import React, { useRef, useEffect } from 'react';
-import { Shield, ShieldAlert, Video, VideoOff, Lock } from 'lucide-react';
+import { Shield, Video, VideoOff, Lock, Loader2, UserCheck, AlertCircle } from 'lucide-react';
 import type { Point3D, RulaEvaluation } from '../types/ergosense';
 
 interface LiveViewportProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   isStreaming: boolean;
+  isSimulating?: boolean;
+  modelLoaded: boolean;
+  isModelLoading: boolean;
+  error?: string | null;
   privacyShield: boolean;
   onTogglePrivacyShield: () => void;
   rula: RulaEvaluation;
@@ -19,6 +23,10 @@ export const LiveViewport: React.FC<LiveViewportProps> = ({
   videoRef,
   canvasRef,
   isStreaming,
+  isSimulating = false,
+  modelLoaded,
+  isModelLoading,
+  error,
   privacyShield,
   onTogglePrivacyShield,
   rula,
@@ -28,6 +36,31 @@ export const LiveViewport: React.FC<LiveViewportProps> = ({
   fps,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Synchronize overlay canvas resolution with video dimensions
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const syncDimensions = () => {
+      if (video.videoWidth && video.videoHeight) {
+        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+        }
+      }
+    };
+
+    video.addEventListener('loadedmetadata', syncDimensions);
+    video.addEventListener('resize', syncDimensions);
+    syncDimensions();
+
+    return () => {
+      video.removeEventListener('loadedmetadata', syncDimensions);
+      video.removeEventListener('resize', syncDimensions);
+    };
+  }, [videoRef, canvasRef, isStreaming]);
 
   // Draw skeleton wireframe on overlay canvas
   useEffect(() => {
@@ -177,18 +210,18 @@ export const LiveViewport: React.FC<LiveViewportProps> = ({
       {/* Warning countdown toast for poor posture before 10s alert */}
       {poorPostureDurationSec > 2 && !alertActive && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 px-3.5 py-1.5 rounded-full bg-amber-500/90 text-slate-950 text-xs font-semibold shadow-lg backdrop-blur-md flex items-center gap-1.5 animate-bounce">
-          <ShieldAlert className="w-4 h-4" />
+          <AlertCircle className="w-4 h-4" />
           <span>Slouch detected! Correct posture in {10 - poorPostureDurationSec}s</span>
         </div>
       )}
 
-      {/* Video Element (hidden if in privacy shield mode) */}
+      {/* Video Element */}
       <video
         ref={videoRef}
         playsInline
         muted
         className={`absolute inset-0 w-full h-full object-cover -scale-x-100 transition-opacity duration-300 ${
-          privacyShield || !isStreaming ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          privacyShield || !isStreaming || isSimulating ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
       />
 
@@ -201,15 +234,40 @@ export const LiveViewport: React.FC<LiveViewportProps> = ({
       />
 
       {/* Inactive Camera State */}
-      {!isStreaming && (
+      {!isStreaming && !isSimulating && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/90 text-slate-400 gap-3">
           <div className="p-4 rounded-full bg-slate-900 border border-slate-800">
             <VideoOff className="w-8 h-8 text-slate-500" />
           </div>
           <p className="text-sm font-medium">Camera Feed Suspended</p>
           <p className="text-xs text-slate-500 max-w-xs text-center">
-            Click Start Monitoring to begin real-time posture analysis.
+            Click Start Monitoring to begin real-time posture analysis, or activate Simulation Mode to test.
           </p>
+          {error && (
+            <div className="mt-2 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2 max-w-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Model Loading State while camera is active */}
+      {isStreaming && !isSimulating && !modelLoaded && isModelLoading && (
+        <div className="absolute inset-0 z-25 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-sm text-slate-300 gap-3">
+          <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+          <p className="text-sm font-medium">Initializing MediaPipe Vision Model...</p>
+          <p className="text-xs text-slate-400 max-w-xs text-center">
+            Loading client-side Wasm models. Video will remain 100% on your local device.
+          </p>
+        </div>
+      )}
+
+      {/* Camera streaming but no pose detected */}
+      {isStreaming && !isSimulating && modelLoaded && landmarks.length === 0 && (
+        <div className="absolute bottom-14 left-1/2 -translate-x-1/2 z-25 px-3 py-1 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700 text-slate-300 text-xs flex items-center gap-1.5 shadow-lg">
+          <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+          <span>Face the camera so head &amp; shoulders are in frame</span>
         </div>
       )}
 
@@ -219,7 +277,7 @@ export const LiveViewport: React.FC<LiveViewportProps> = ({
         <div className="flex items-center gap-2 pointer-events-auto">
           <div className="px-2.5 py-1 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-700/60 text-[11px] font-medium text-slate-300 flex items-center gap-1.5 shadow-md">
             <Lock className="w-3 h-3 text-emerald-400" />
-            <span>Client Wasm (Zero Video Sent)</span>
+            <span>{isSimulating ? 'Simulation Mode' : 'Client Wasm (Zero Video Sent)'}</span>
           </div>
 
           {fps > 0 && (
@@ -275,7 +333,7 @@ export const LiveViewport: React.FC<LiveViewportProps> = ({
 
         {alertActive && (
           <div className="px-3 py-1.5 rounded-lg bg-rose-600 text-white text-xs font-bold shadow-lg shadow-rose-600/40 flex items-center gap-1.5 animate-pulse">
-            <ShieldAlert className="w-3.5 h-3.5" />
+            <AlertCircle className="w-3.5 h-3.5" />
             <span>ERGONOMIC ALERT</span>
           </div>
         )}

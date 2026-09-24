@@ -15,6 +15,8 @@ import { useAudioDetection } from './hooks/useAudioDetection';
 import { useAudioAlert } from './hooks/useAudioAlert';
 import { useVisionHealth } from './hooks/useVisionHealth';
 import { useTelemetryWebSocket } from './hooks/useTelemetryWebSocket';
+import { evaluateRULA } from './core/kinematics';
+import type { Point3D, KinematicsMetrics, RulaEvaluation } from './types/ergosense';
 
 export const App: React.FC = () => {
   // Session State
@@ -24,19 +26,22 @@ export const App: React.FC = () => {
   const [privacyShield, setPrivacyShield] = useState<boolean>(false);
   const [isStretchModalOpen, setIsStretchModalOpen] = useState<boolean>(false);
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState<boolean>(false);
+  const [isSimulating, setIsSimulating] = useState<boolean>(false);
 
   // Score & Session Counters
   const [goodSeconds, setGoodSeconds] = useState<number>(0);
   const [poorSeconds, setPoorSeconds] = useState<number>(0);
   const [stretchesCompleted, setStretchesCompleted] = useState<number>(0);
 
-  // Canvas ref for wireframe & ambient lighting sampling
+  // Canvas ref for wireframe overlay
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // 1. Webcam Hook
   const {
     videoRef,
     isStreaming,
+    error: webcamError,
+    clearError: clearWebcamError,
     startCamera,
     stopCamera,
   } = useWebcam();
@@ -68,20 +73,47 @@ export const App: React.FC = () => {
   }, []);
 
   const {
-    kinematics,
-    rula,
-    earValue,
-    ipdRaw,
+    isLoading: isMediaPipeLoading,
+    modelLoaded,
+    error: mediaPipeError,
+    kinematics: liveKinematics,
+    rula: liveRula,
+    earValue: liveEarValue,
+    ipdRaw: liveIpdRaw,
     baselines,
     calibrate: calibrateLocal,
-    alertActive,
-    poorPostureDurationSec,
-    consecutivePoorCount,
-    resetAlert,
-    landmarks,
+    alertActive: liveAlertActive,
+    poorPostureDurationSec: livePoorPostureDurationSec,
+    consecutivePoorCount: liveConsecutivePoorCount,
+    resetAlert: resetLiveAlert,
+    landmarks: liveLandmarks,
     startInference,
     stopInference,
+    fps: liveFps,
   } = useMediaPipe(onPoorThresholdReached);
+
+  // Simulation state values
+  const [simKinematics, setSimKinematics] = useState<KinematicsMetrics>({
+    cva_deg: 53.0,
+    shoulder_tilt_deg: 1.5,
+    trunk_angle_deg: 6.0,
+  });
+  const [simRula, setSimRula] = useState<RulaEvaluation>(evaluateRULA(53.0, 1.5, 6.0, 1.0));
+  const [simLandmarks, setSimLandmarks] = useState<Point3D[]>([]);
+  const [simAlertActive, setSimAlertActive] = useState<boolean>(false);
+  const [simPoorDuration, setSimPoorDuration] = useState<number>(0);
+  const simIntervalRef = useRef<number | null>(null);
+  const simStepRef = useRef<number>(0);
+
+  // Resolve active states depending on whether live or simulation mode is running
+  const kinematics = isSimulating ? simKinematics : liveKinematics;
+  const rula = isSimulating ? simRula : liveRula;
+  const landmarks = isSimulating ? simLandmarks : liveLandmarks;
+  const alertActive = isSimulating ? simAlertActive : liveAlertActive;
+  const poorPostureDurationSec = isSimulating ? simPoorDuration : livePoorPostureDurationSec;
+  const consecutivePoorCount = liveConsecutivePoorCount;
+  const fps = isSimulating ? 30 : liveFps;
+  const isLive = isStreaming || isSimulating;
 
   // 6. WebSocket Telemetry Hook (streams numeric metrics, ZERO raw video)
   const {
@@ -112,7 +144,7 @@ export const App: React.FC = () => {
     initSession();
   }, []);
 
-  // Connect webcam to MediaPipe inference loop
+  // Connect webcam to MediaPipe inference loop with synchronization on model load
   useEffect(() => {
     if (isStreaming && videoRef.current) {
       startInference(videoRef.current, canvasRef.current || undefined);
@@ -122,27 +154,120 @@ export const App: React.FC = () => {
     return () => {
       stopInference();
     };
-  }, [isStreaming, videoRef, canvasRef, startInference, stopInference]);
+  }, [isStreaming, modelLoaded, videoRef, canvasRef, startInference, stopInference]);
 
-  // Periodic Vision Health & Canvas Lighting evaluation
+  // Procedural Simulation Loop for testing without camera
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isSimulating) {
+      if (simIntervalRef.current) {
+        clearInterval(simIntervalRef.current);
+        simIntervalRef.current = null;
+      }
+      return;
+    }
 
-    const interval = setInterval(() => {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d') || undefined;
-      processVisionFrame(
-        earValue,
-        ipdRaw,
-        baselines.baseline_ipd,
-        ctx,
-        canvas?.width,
-        canvas?.height
-      );
+    // Stop webcam if running while switching to simulation
+    if (isStreaming) {
+      stopCamera();
+    }
+
+    simIntervalRef.current = window.setInterval(() => {
+      simStepRef.current += 1;
+      const t = simStepRef.current;
+      // Cycle: 0-15s upright, 15-30s gradual slouch, 30-45s poor posture alert, 45-60s recovery
+      const cycle = t % 60;
+      let cva = 54.0;
+      let tilt = 1.2;
+      let trunk = 6.0;
+      let ipdRat = 1.0;
+
+      if (cycle < 18) {
+        // Ideal upright posture
+        cva = 52.0 + Math.sin(t * 0.2) * 2.0;
+        tilt = 1.0 + Math.cos(t * 0.1) * 1.0;
+        trunk = 5.0 + Math.sin(t * 0.15) * 1.5;
+        ipdRat = 1.0;
+        setSimPoorDuration(0);
+        setSimAlertActive(false);
+      } else if (cycle < 32) {
+        // Moderate slouching forward
+        cva = 44.0 + Math.sin(t * 0.2) * 2.0;
+        tilt = 5.0 + Math.sin(t * 0.1) * 2.0;
+        trunk = 14.0 + Math.cos(t * 0.15) * 2.0;
+        ipdRat = 1.15;
+        const dur = cycle - 18;
+        setSimPoorDuration(dur);
+        setSimAlertActive(dur >= 10);
+      } else if (cycle < 48) {
+        // Severe forward head posture (Tech Neck)
+        cva = 35.0 + Math.sin(t * 0.3) * 2.0;
+        tilt = 8.0 + Math.cos(t * 0.2) * 2.0;
+        trunk = 19.0 + Math.sin(t * 0.2) * 2.5;
+        ipdRat = 1.32;
+        const dur = cycle - 18;
+        setSimPoorDuration(dur);
+        setSimAlertActive(dur >= 10);
+      } else {
+        // Posture correction / stretch recovery
+        cva = 55.0 + Math.sin(t * 0.2) * 1.5;
+        tilt = 1.0;
+        trunk = 5.0;
+        ipdRat = 1.0;
+        setSimPoorDuration(0);
+        setSimAlertActive(false);
+      }
+
+      const evalRes = evaluateRULA(cva, tilt, trunk, ipdRat);
+      setSimKinematics({
+        cva_deg: Math.round(cva * 10) / 10,
+        shoulder_tilt_deg: Math.round(tilt * 10) / 10,
+        trunk_angle_deg: Math.round(trunk * 10) / 10,
+      });
+      setSimRula(evalRes);
+
+      // Procedural synthetic wireframe landmarks
+      const slouchOffset = (54.0 - cva) * 0.003;
+      const noseY = 0.32 + slouchOffset;
+      const earY = 0.30 + slouchOffset;
+      const shY = 0.62;
+      const tiltOffset = (tilt / 10.0) * 0.03;
+
+      setSimLandmarks([
+        { x: 0.50, y: noseY, z: -0.05, visibility: 0.95 },
+        { x: 0.43, y: earY - tiltOffset, z: 0.0, visibility: 0.95 },
+        { x: 0.57, y: earY + tiltOffset, z: 0.0, visibility: 0.95 },
+        { x: 0.33, y: shY - tiltOffset, z: 0.05, visibility: 0.95 },
+        { x: 0.67, y: shY + tiltOffset, z: 0.05, visibility: 0.95 },
+        { x: 0.38, y: 0.92, z: 0.05, visibility: 0.85 },
+        { x: 0.62, y: 0.92, z: 0.05, visibility: 0.85 },
+      ]);
     }, 200);
 
+    return () => {
+      if (simIntervalRef.current) {
+        clearInterval(simIntervalRef.current);
+        simIntervalRef.current = null;
+      }
+    };
+  }, [isSimulating, isStreaming, stopCamera]);
+
+  // Periodic Vision Health evaluation
+  useEffect(() => {
+    if (!isLive) return;
+
+    const interval = setInterval(() => {
+      const ear = isSimulating ? 0.28 : liveEarValue;
+      const ipd = isSimulating ? 0.08 : liveIpdRaw;
+      processVisionFrame(
+        ear,
+        ipd,
+        baselines.baseline_ipd,
+        videoRef.current
+      );
+    }, 250);
+
     return () => clearInterval(interval);
-  }, [isStreaming, earValue, ipdRaw, baselines.baseline_ipd, processVisionFrame]);
+  }, [isLive, isSimulating, liveEarValue, liveIpdRaw, baselines.baseline_ipd, videoRef, processVisionFrame]);
 
   // Alert Sound Trigger on 10s Continuous Poor Posture
   useEffect(() => {
@@ -153,7 +278,7 @@ export const App: React.FC = () => {
 
   // Track session duration & calculate daily ergonomic score
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isLive) return;
 
     const timer = setInterval(() => {
       if (rula.rula_score <= 2) {
@@ -164,11 +289,11 @@ export const App: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isStreaming, rula.rula_score]);
+  }, [isLive, rula.rula_score]);
 
   // Periodic Telemetry Streaming to Backend (1 packet per second)
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isLive) return;
 
     const interval = setInterval(() => {
       sendTelemetry({
@@ -187,7 +312,7 @@ export const App: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [
-    isStreaming,
+    isLive,
     sendTelemetry,
     sessionToken,
     rula.rula_score,
@@ -205,18 +330,35 @@ export const App: React.FC = () => {
 
   // Handlers
   const handleToggleCamera = useCallback(() => {
+    if (isSimulating) {
+      setIsSimulating(false);
+    }
     if (isStreaming) {
       stopCamera();
     } else {
+      clearWebcamError();
       startCamera();
     }
-  }, [isStreaming, startCamera, stopCamera]);
+  }, [isSimulating, isStreaming, startCamera, stopCamera, clearWebcamError]);
+
+  const handleToggleSimulation = useCallback(() => {
+    if (isSimulating) {
+      setIsSimulating(false);
+    } else {
+      if (isStreaming) {
+        stopCamera();
+      }
+      clearWebcamError();
+      setIsSimulating(true);
+    }
+  }, [isSimulating, isStreaming, stopCamera, clearWebcamError]);
 
   const handleCalibrate = useCallback(async () => {
     calibrateLocal();
+    const currentIpd = isSimulating ? 0.08 : liveIpdRaw;
     const baselinesPayload = {
       session_token: sessionToken,
-      baseline_ipd: ipdRaw > 0.01 ? ipdRaw : 0.08,
+      baseline_ipd: currentIpd > 0.01 ? currentIpd : 0.08,
       baseline_cva: kinematics.cva_deg,
       baseline_shoulder_tilt: kinematics.shoulder_tilt_deg,
     };
@@ -232,21 +374,23 @@ export const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(baselinesPayload),
       });
-    } catch (e) {
+    } catch {
       // non-blocking
     }
-  }, [calibrateLocal, sessionToken, ipdRaw, kinematics, sendCalibration]);
+  }, [calibrateLocal, isSimulating, liveIpdRaw, sessionToken, kinematics, sendCalibration]);
 
   const handleResetSession = useCallback(async () => {
     setGoodSeconds(0);
     setPoorSeconds(0);
-    resetAlert();
+    resetLiveAlert();
+    setSimPoorDuration(0);
+    setSimAlertActive(false);
     try {
       await fetch('/api/reset-session', { method: 'POST' });
-    } catch (e) {
+    } catch {
       // non-blocking
     }
-  }, [resetAlert]);
+  }, [resetLiveAlert]);
 
   const handleLogCompletedStretch = useCallback(
     async (stretchName: string, heldDurationSec: number) => {
@@ -264,20 +408,22 @@ export const App: React.FC = () => {
             completed: true,
           }),
         });
-      } catch (e) {
+      } catch {
         // non-blocking
       }
     },
     [sendStretchEvent, sessionToken]
   );
 
+  const displayError = webcamError || mediaPipeError;
+
   return (
     <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col selection:bg-indigo-600 selection:text-white">
       {/* Header */}
       <Header
         connectionState={connectionState}
-        isStreaming={isStreaming}
-        fps={isStreaming ? 24 : 0}
+        isStreaming={isLive}
+        fps={isLive ? fps : 0}
         userSpeaking={userSpeaking}
         privacyShield={privacyShield}
       />
@@ -291,18 +437,26 @@ export const App: React.FC = () => {
               videoRef={videoRef}
               canvasRef={canvasRef}
               isStreaming={isStreaming}
+              isSimulating={isSimulating}
+              modelLoaded={modelLoaded}
+              isModelLoading={isMediaPipeLoading}
+              error={displayError}
               privacyShield={privacyShield}
               onTogglePrivacyShield={() => setPrivacyShield((prev) => !prev)}
               rula={rula}
               landmarks={landmarks}
               alertActive={alertActive}
               poorPostureDurationSec={poorPostureDurationSec}
-              fps={isStreaming ? 24 : 0}
+              fps={fps}
             />
 
             <Controls
               isStreaming={isStreaming}
+              isSimulating={isSimulating}
               onToggleCamera={handleToggleCamera}
+              onToggleSimulation={handleToggleSimulation}
+              modelLoaded={modelLoaded}
+              isModelLoading={isMediaPipeLoading}
               onCalibrate={handleCalibrate}
               onResetSession={handleResetSession}
               isMuted={isMuted}
@@ -354,7 +508,7 @@ export const App: React.FC = () => {
 
       <AlertToast
         showAlert={alertActive}
-        onDismiss={resetAlert}
+        onDismiss={resetLiveAlert}
       />
     </div>
   );

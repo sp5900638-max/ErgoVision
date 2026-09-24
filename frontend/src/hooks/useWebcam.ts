@@ -5,6 +5,7 @@ interface UseWebcamReturn {
   hiddenCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   isStreaming: boolean;
   error: string | null;
+  clearError: () => void;
   startCamera: () => Promise<boolean>;
   stopCamera: () => void;
   captureFrameBlob: (quality?: number) => Promise<Blob | null>;
@@ -20,6 +21,10 @@ export function useWebcam(): UseWebcamReturn {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState({ width: 640, height: 480 });
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -37,7 +42,7 @@ export function useWebcam(): UseWebcamReturn {
     setError(null);
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setError('Camera API is not supported in this browser environment.');
+      setError('Camera API is not supported in this browser or security context.');
       return false;
     }
 
@@ -54,27 +59,50 @@ export function useWebcam(): UseWebcamReturn {
       streamRef.current = stream;
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        const video = videoRef.current;
+        video.srcObject = stream;
+
+        // Resilient playback handling
+        try {
+          await video.play();
+        } catch {
+          // Playback might be deferred until user interaction or loadedmetadata
+          video.onloadedmetadata = () => {
+            video.play().catch((e) => console.warn('Deferred video play failed:', e));
+          };
+        }
 
         const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        if (settings.width && settings.height) {
-          setDimensions({ width: settings.width, height: settings.height });
+        if (track) {
+          const settings = track.getSettings();
+          if (settings.width && settings.height) {
+            setDimensions({ width: settings.width, height: settings.height });
+          }
         }
       }
 
       setIsStreaming(true);
       return true;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Could not access webcam';
+      let message = 'Could not access webcam';
+      if (err instanceof Error) {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          message = 'Camera permission denied. Please allow camera access in your browser.';
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          message = 'No camera device found on this system. You can use Simulation Mode.';
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          message = 'Camera is currently in use by another application.';
+        } else {
+          message = err.message;
+        }
+      }
       setError(message);
       setIsStreaming(false);
       return false;
     }
   }, [stopCamera]);
 
-  // Capture frame from video onto offscreen/hidden canvas and export as JPEG Blob
+  // Capture frame from video onto offscreen canvas and export as JPEG Blob
   const captureFrameBlob = useCallback((quality: number = 0.6): Promise<Blob | null> => {
     return new Promise((resolve) => {
       const video = videoRef.current;
@@ -91,8 +119,6 @@ export function useWebcam(): UseWebcamReturn {
 
       const w = video.videoWidth || 640;
       const h = video.videoHeight || 480;
-
-      // Downsample slightly if larger for optimal network transfer
       const targetW = Math.min(w, 640);
       const targetH = Math.round((h / w) * targetW);
 
@@ -158,6 +184,7 @@ export function useWebcam(): UseWebcamReturn {
     hiddenCanvasRef,
     isStreaming,
     error,
+    clearError,
     startCamera,
     stopCamera,
     captureFrameBlob,

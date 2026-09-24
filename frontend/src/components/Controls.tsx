@@ -11,11 +11,17 @@ import {
   BarChart3,
   Mic,
   MicOff,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 
 interface ControlsProps {
   isStreaming: boolean;
+  isSimulating: boolean;
   onToggleCamera: () => void;
+  onToggleSimulation: () => void;
+  modelLoaded: boolean;
+  isModelLoading: boolean;
   onCalibrate: () => Promise<void> | void;
   onResetSession: () => Promise<void> | void;
   isMuted: boolean;
@@ -30,7 +36,11 @@ interface ControlsProps {
 
 export const Controls: React.FC<ControlsProps> = ({
   isStreaming,
+  isSimulating,
   onToggleCamera,
+  onToggleSimulation,
+  modelLoaded,
+  isModelLoading,
   onCalibrate,
   onResetSession,
   isMuted,
@@ -66,10 +76,13 @@ export const Controls: React.FC<ControlsProps> = ({
     }
   };
 
+  const isLive = isStreaming || isSimulating;
+
   return (
     <div className="w-full bg-slate-900/90 backdrop-blur-md rounded-2xl p-4 border border-slate-800 shadow-xl flex flex-wrap items-center justify-between gap-3">
-      {/* Primary Camera Action */}
-      <div className="flex items-center space-x-2">
+      {/* Primary Action Buttons */}
+      <div className="flex items-center flex-wrap gap-2">
+        {/* Webcam Start/Stop Button */}
         <button
           type="button"
           onClick={onToggleCamera}
@@ -82,7 +95,7 @@ export const Controls: React.FC<ControlsProps> = ({
           {isStreaming ? (
             <>
               <VideoOff className="w-4 h-4" />
-              <span>Stop Monitoring</span>
+              <span>Stop Camera</span>
             </>
           ) : (
             <>
@@ -91,18 +104,53 @@ export const Controls: React.FC<ControlsProps> = ({
             </>
           )}
         </button>
+
+        {/* Simulation / Demo Mode Toggle */}
+        <button
+          type="button"
+          onClick={onToggleSimulation}
+          title="Toggle Simulation Mode to test posture tracking and alerts without a webcam"
+          className={`flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+            isSimulating
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 ring-1 ring-amber-400/50'
+              : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+          }`}
+        >
+          <Sparkles className={`w-3.5 h-3.5 ${isSimulating ? 'text-amber-400 animate-spin' : 'text-slate-400'}`} />
+          <span>{isSimulating ? 'Stop Simulation' : 'Simulation Mode'}</span>
+        </button>
+
+        {/* AI Engine Status Chip */}
+        <div className="hidden xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950/60 border border-slate-800 text-[11px] font-mono text-slate-400">
+          {modelLoaded ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span>AI Ready</span>
+            </>
+          ) : isModelLoading ? (
+            <>
+              <Loader2 className="w-3 h-3 text-indigo-400 animate-spin" />
+              <span>Loading Model...</span>
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span>AI Standby</span>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Action Buttons Group */}
+      {/* Action Controls Group */}
       <div className="flex items-center flex-wrap gap-2">
         {/* Calibrate Posture */}
         <button
           type="button"
           onClick={handleCalibrate}
-          disabled={!isStreaming || isCalibrating}
+          disabled={!isLive || isCalibrating}
           title="Sit in your natural ideal upright posture and click to calibrate"
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition-all cursor-pointer ${
-            !isStreaming
+            !isLive
               ? 'opacity-40 cursor-not-allowed bg-slate-800/50 text-slate-500 border-slate-800'
               : justCalibrated
               ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'

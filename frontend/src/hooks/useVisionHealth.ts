@@ -2,11 +2,11 @@
  * Vision Health Hook:
  * - 20-20-20 Rule interval timer (every 20 minutes look 20 ft away for 20 seconds)
  * - Eye Aspect Ratio (EAR) blink rate monitoring
- * - Ambient lighting condition analyzer
+ * - Real-time ambient room lighting condition analyzer
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { BlinkDetector, computeAmbientLuminance } from '../core/visionProximity';
+import { BlinkDetector } from '../core/visionProximity';
 import type { VisionMetrics } from '../types/ergosense';
 
 export interface VisionHealthHook {
@@ -19,9 +19,7 @@ export interface VisionHealthHook {
     earValue: number,
     ipdRaw: number,
     baselineIpd: number,
-    canvasCtx?: CanvasRenderingContext2D,
-    canvasWidth?: number,
-    canvasHeight?: number
+    videoElement?: HTMLVideoElement | null
   ) => void;
 }
 
@@ -50,6 +48,9 @@ export function useVisionHealth(): VisionHealthHook {
     lux: 130,
     status: 'Optimal',
   });
+
+  // Dedicated offscreen sampling canvas for ambient lighting
+  const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // 20-20-20 timer countdown effect
   useEffect(() => {
@@ -102,22 +103,45 @@ export function useVisionHealth(): VisionHealthHook {
       earValue: number,
       ipdRaw: number,
       baselineIpd: number,
-      canvasCtx?: CanvasRenderingContext2D,
-      canvasWidth?: number,
-      canvasHeight?: number
+      videoElement?: HTMLVideoElement | null
     ) => {
       const now = Date.now();
       const blinksPerMin = blinkDetectorRef.current.processEAR(earValue, now);
 
-      // Check ambient lux every 2 seconds to keep CPU overhead low
-      if (canvasCtx && canvasWidth && canvasHeight && now - lastLuxCheckRef.current > 2000) {
+      // Check ambient lighting every 2 seconds from the video feed
+      if (videoElement && videoElement.readyState >= 2 && now - lastLuxCheckRef.current > 2000) {
         lastLuxCheckRef.current = now;
-        cachedLuxRef.current = computeAmbientLuminance(canvasCtx, canvasWidth, canvasHeight);
+        try {
+          if (!offscreenCanvasRef.current) {
+            offscreenCanvasRef.current = document.createElement('canvas');
+            offscreenCanvasRef.current.width = 16;
+            offscreenCanvasRef.current.height = 12;
+          }
+          const canvas = offscreenCanvasRef.current;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (ctx) {
+            ctx.drawImage(videoElement, 0, 0, 16, 12);
+            const imgData = ctx.getImageData(0, 0, 16, 12);
+            const d = imgData.data;
+            let sum = 0;
+            const count = d.length / 4;
+            for (let i = 0; i < d.length; i += 4) {
+              sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+            }
+            const lux = Math.round(sum / count);
+            let status: 'Low' | 'Optimal' | 'Glaring' = 'Optimal';
+            if (lux < 45) status = 'Low';
+            else if (lux > 215) status = 'Glaring';
+            cachedLuxRef.current = { lux, status };
+          }
+        } catch {
+          // Keep cached
+        }
       }
 
       const validBaseline = baselineIpd > 0.01 ? baselineIpd : 0.08;
       const ipdRatio = Math.round((ipdRaw / validBaseline) * 100) / 100;
-      const proximityAlert = ipdRatio > 1.25; // Leaning closer than ~45cm
+      const proximityAlert = ipdRatio > 1.25;
 
       setVisionMetrics({
         ipd_raw: Math.round(ipdRaw * 1000) / 1000,

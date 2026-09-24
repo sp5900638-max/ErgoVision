@@ -6,7 +6,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Multi--Stage_Hardened-2496ED.svg?logo=docker)](https://www.docker.com)
 [![Security](https://img.shields.io/badge/Security-Zero--Trust_Hardened-green.svg)](https://owasp.org)
 
-**ErgoSense 360** is an enterprise-grade, real-time biomechanical ergonomic and vision-health monitoring platform. It combines **complete client-side camera stream privacy** (zero video frames transmitted across the network) with **in-browser WebAssembly/WebGPU MediaPipe computer vision**, **1D Kalman coordinate filtering**, **3D kinematics & RULA assessment**, **vision proximity & blink health tracking**, **speech detection auto-mute**, **guided micro-break stretches with 5-second CV hold verification**, and a hardened **FastAPI + PostgreSQL / SQLite backend**.
+**ErgoSense 360** is an enterprise-grade, real-time biomechanical ergonomic and vision-health monitoring platform. It combines **complete client-side camera stream privacy** (zero video frames transmitted across the network) with **in-browser WebAssembly/WebGPU MediaPipe computer vision**, **automated GPU-to-CPU hardware fallback**, **1D Kalman coordinate filtering**, **3D kinematics & RULA assessment**, **vision proximity & blink health tracking**, **speech detection auto-mute**, **guided micro-break stretches with 5-second CV hold verification**, an interactive **Simulation Mode**, and a hardened **FastAPI + PostgreSQL / SQLite backend**.
 
 ---
 
@@ -15,11 +15,12 @@
 ```mermaid
 flowchart TD
     subgraph Client ["Client Browser (100% Video Privacy)"]
-        Cam["Webcam Stream (getUserMedia)"] --> MP["MediaPipe Pose & FaceMesh (Wasm/WebGPU)"]
+        Cam["Webcam Stream (getUserMedia)"] --> MP["MediaPipe Pose & FaceMesh (Wasm/GPU with CPU Fallback)"]
+        Sim["Procedural Simulation Engine"] -.-> KF
         MP --> KF["1D Kalman Filter (Q=0.008, R=0.05)"]
         
-        KF --> Kinematics["3D Kinematics & RULA Engine\n(CVA, Shoulder Tilt, Trunk Angle)"]
-        KF --> Vision["Vision Health Engine\n(IPD Proximity, EAR Blinks, Lux, 20-20-20)"]
+        KF --> Kinematics["3D Kinematics & RULA Engine\n(CVA, Shoulder Tilt, Seated Trunk Angle)"]
+        KF --> Vision["Vision Health Engine\n(IPD Proximity, EAR Blinks, Video Lux, 20-20-20)"]
         
         Mic["Microphone Stream"] --> Audio["Web Audio Energy Analyzer\n(Speech Detection Auto-Mute)"]
         
@@ -53,10 +54,15 @@ flowchart TD
 
 ---
 
-## Core Functional Engines
+## Core Functional Engines & Reliability Upgrades
 
 ### 1. In-Browser Client Inference & Privacy
-- **Zero Video Stream Transmission**: Raw video frames are processed exclusively inside the browser using `@mediapipe/tasks-vision` running via WebAssembly and WebGPU delegates. Video never traverses the network.
+- **Zero Video Stream Transmission**: Raw video frames are processed exclusively inside the browser using `@mediapipe/tasks-vision` running via WebAssembly. Video never traverses the network.
+- **Asynchronous Model Synchronization**: Inference queue automatically starts the animation loop as soon as neural network weights finish downloading, eliminating race conditions when monitoring starts early.
+- **Automated GPU-to-CPU Fallback**: Gracefully detects WebGL context loss or lack of hardware acceleration and falls back to CPU execution, preventing application crashes.
+- **Seated Desk Ergonomics Tolerance**: Accurately tracks head posture and shoulder tilt even when hips are outside the webcam frame during normal desk seating.
+- **Pixel-Perfect Canvas Overlay**: Dynamically synchronizes canvas coordinates with the webcam stream's native resolution and aspect ratio (4:3 or 16:9), ensuring 1:1 skeleton alignment.
+- **Simulation Mode**: Built-in procedural posture generator allows full interactive testing of RULA scoring, slouch alarms, stretch interventions, and reports even on devices without a physical camera.
 - **Privacy Shield Mode**: Instant toggle between normal camera feed and a pure black canvas (`#070b14`) rendering ONLY the glowing, smoothed skeleton wireframe color-coded by RULA status.
 - **1D Kalman Filtering**: Coordinates of ears, shoulders, nose, hips, and pupils pass through state-space `KalmanFilter1D` ($Q=0.008, R=0.05$) to eliminate coordinate jitter without introducing lag.
 
@@ -73,7 +79,7 @@ flowchart TD
 ### 3. Vision Health & Proximity Engine
 - **Inter-Pupillary Distance (IPD) Proximity Tracking**: Computes $IPD / IPD_0$. Warns user when ratio $> 1.25$ (viewing distance $< 45\text{cm}$).
 - **Eye Aspect Ratio (EAR) Blink Monitor**: Evaluates eyelid opening ratio. Rolling 60s window calculates blinks/min (normal 14–22; $< 10$ alerts for digital eye strain).
-- **Ambient Room Luminance**: Samples canvas pixel buffer ($Y = 0.299R + 0.587G + 0.114B$) to detect low lighting ($< 45$) or screen glare ($> 215$).
+- **Ambient Room Luminance**: Samples webcam video frames via a lightweight offscreen buffer ($Y = 0.299R + 0.587G + 0.114B$) to detect low lighting ($< 45$) or screen glare ($> 215$).
 - **20-20-20 Rule Timer**: 20-minute countdown with rest reminders to look at an object 20 feet away for 20 seconds.
 
 ### 4. Audio Intelligence (Call & Speech Auto-Mute)
@@ -92,10 +98,10 @@ flowchart TD
 ### Prerequisites
 - Python 3.10+ (tested on Python 3.12)
 - Node.js 18+ (tested on Node v20/24)
-- A working webcam
+- A working webcam (or use built-in **Simulation Mode**)
 
 ### Option A: One-Click Runner (Windows)
-Double-click **`run.bat`** in the repository root. It launches the unified server and automatically opens `http://localhost:8000` in your default browser.
+Double-click **`run.bat`** (or **`start.bat`**) in the repository root. It ensures the frontend bundle is built, starts the unified server, and automatically opens `http://localhost:8000` in your default browser.
 
 ### Option B: Command Line (Unified Server)
 ```bash
