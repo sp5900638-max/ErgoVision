@@ -27,15 +27,34 @@ class PostureTracker:
         self.min_tracking_confidence = min_tracking_confidence
         self.ema_alpha = ema_alpha
 
-        # MediaPipe Pose instance
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose(
-            static_image_mode=static_image_mode,
-            model_complexity=model_complexity,
-            smooth_landmarks=smooth_landmarks,
-            min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence,
-        )
+        # MediaPipe Pose instance with resilient import fallback
+        self.mp_pose = None
+        self.pose = None
+        try:
+            import mediapipe.python.solutions.pose as mp_pose
+            self.mp_pose = mp_pose
+            self.pose = self.mp_pose.Pose(
+                static_image_mode=static_image_mode,
+                model_complexity=model_complexity,
+                smooth_landmarks=smooth_landmarks,
+                min_detection_confidence=min_detection_confidence,
+                min_tracking_confidence=min_tracking_confidence,
+            )
+        except Exception:
+            try:
+                import mediapipe as mp
+                if hasattr(mp, "solutions") and hasattr(mp.solutions, "pose"):
+                    self.mp_pose = mp.solutions.pose
+                    self.pose = self.mp_pose.Pose(
+                        static_image_mode=static_image_mode,
+                        model_complexity=model_complexity,
+                        smooth_landmarks=smooth_landmarks,
+                        min_detection_confidence=min_detection_confidence,
+                        min_tracking_confidence=min_tracking_confidence,
+                    )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("MediaPipe Pose solutions not initialized: %s", e)
 
         # Temporal EMA filter state: { landmark_id: (x, y, z) }
         self.ema_landmarks: Optional[Dict[int, Tuple[float, float, float]]] = None
@@ -112,7 +131,7 @@ class PostureTracker:
 
         Frames with landmark detection confidence below 0.6 are flagged.
         """
-        if frame_bgr is None or frame_bgr.size == 0:
+        if not self.pose or frame_bgr is None or frame_bgr.size == 0:
             return {
                 "detected": False,
                 "confidence": 0.0,
