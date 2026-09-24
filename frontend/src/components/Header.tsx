@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Wifi, WifiOff, Camera, VideoOff, ShieldCheck, Mic } from 'lucide-react';
+import { Activity, Wifi, WifiOff, Camera, VideoOff, ShieldCheck, Mic, BookOpen } from 'lucide-react';
 import type { ConnectionState } from '../types/ergosense';
 
 interface HeaderProps {
@@ -104,6 +104,18 @@ export const Header: React.FC<HeaderProps> = ({
               </>
             )}
           </div>
+
+          {/* API Docs Link */}
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noreferrer"
+            className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors"
+            title="Open Swagger API documentation"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+            <span>API Docs</span>
+          </a>
         </div>
       </div>
     </header>
