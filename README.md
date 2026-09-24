@@ -123,6 +123,19 @@ Open **`http://localhost:8000`** in your browser.
 
 ---
 
+## 🚀 Cloud Deployment for End Users
+
+To deploy **ErgoSense 360** publicly so users can access it safely over HTTPS with camera permissions and WebSockets enabled, choose one of the following turnkey options (see full guide in [DEPLOYMENT.md](DEPLOYMENT.md)):
+
+| Platform | Type | SSL | Setup Guide |
+| :--- | :--- | :--- | :--- |
+| **Render.com** (Recommended) | Managed PaaS / Docker | Free Auto-TLS | Connect GitHub repo & choose `render.yaml` blueprint |
+| **Railway.app** | PaaS / Docker | Free Auto-TLS | Deploy from GitHub repo using `railway.json` |
+| **Fly.io** | Global Edge Containers | Free Auto-TLS | Run `fly launch` using `fly.toml` |
+| **Hardened VPS** | Self-Hosted Linux VPS | Let's Encrypt / Cloudflare | Run `scripts/harden-host.sh` & `docker compose` |
+
+---
+
 ## Production Deployment & Zero-Trust Security Hardening Guide
 
 ### 1. Architecture & Network Micro-Segmentation
