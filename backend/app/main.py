@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
+import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -42,14 +43,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Configuration for local frontend development
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "*",
-]
+# CORS Configuration
+env_origins = os.getenv("ALLOWED_ORIGINS")
+if env_origins:
+    origins = [orig.strip() for orig in env_origins.split(",") if orig.strip()]
+else:
+    origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "*",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
