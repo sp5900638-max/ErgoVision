@@ -12,7 +12,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Hardened Python Production Runtime (Zero-Trust Non-Root)
-FROM python:3.12-slim-bookworm AS runner
+FROM python:3.11-slim-bookworm AS runner
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -50,13 +50,14 @@ COPY --chown=${APP_UID}:${APP_GID} ./backend /app/backend
 # Copy compiled frontend production assets from Stage 1 into /app/frontend/dist
 COPY --from=frontend-builder --chown=${APP_UID}:${APP_GID} /app/frontend/dist /app/frontend/dist
 
-# Allocate storage and temp directories with unprivileged permissions
-RUN mkdir -p /app/data /app/tmp && chown -R ${APP_UID}:${APP_GID} /app/data /app/tmp
+# Allocate storage and temp directories with unprivileged permissions across entire app
+RUN mkdir -p /app/data /app/tmp && chown -R ${APP_UID}:${APP_GID} /app
 
 # Drop privileges to non-root execution
 USER ${APP_UID}:${APP_GID}
 
 EXPOSE 8000
+EXPOSE 10000
 
 # Dumb-init prevents PID 1 zombie process hoarding and handles signals gracefully
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

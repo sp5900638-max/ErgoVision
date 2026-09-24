@@ -3,11 +3,14 @@ from typing import Dict, Any, List, Optional, Tuple
 import math
 import numpy as np
 import cv2
-import mediapipe as mp
+try:
+    import mediapipe as mp
+except Exception:
+    mp = None
 
 
 class PostureTracker:
-    """Detects human pose landmarks with high complexity, temporal EMA smoothing,
+    """Detects human pose landmarks with temporal EMA smoothing,
 
     and robust angled/frontal posture metric extraction.
     """

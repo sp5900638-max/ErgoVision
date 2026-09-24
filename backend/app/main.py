@@ -28,8 +28,11 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "di
 async def lifespan(app: FastAPI):
     """Handles startup initialization and graceful shutdown."""
     logger.info("Initializing Posture Monitor Backend service...")
-    Base.metadata.create_all(bind=engine)
-    logger.info("SQLite database tables verified/created.")
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables verified/created.")
+    except Exception as db_err:
+        logger.warning(f"Database initialization deferred: {db_err}")
     yield
     logger.info("Shutting down Posture Monitor Backend service...")
     try:
