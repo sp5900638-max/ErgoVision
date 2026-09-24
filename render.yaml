@@ -8,9 +8,9 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: PORT
+        value: "8000"
       - key: ALLOWED_ORIGINS
         value: "*"
       - key: ENVIRONMENT
         value: production
-      - key: WORKERS
-        value: "2"

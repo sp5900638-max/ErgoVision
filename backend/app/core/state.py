@@ -1,15 +1,19 @@
 """Global shared application state for tracker and evaluator singletons."""
 from typing import Optional, Dict, Any
-from .tracker import PostureTracker
 from .evaluator import PostureEvaluator
 
-tracker = PostureTracker()
+_tracker = None
 evaluator = PostureEvaluator()
 latest_tracker_result: Optional[Dict[str, Any]] = None
 
 
-def get_tracker() -> PostureTracker:
-    return tracker
+def get_tracker():
+    """Lazily initializes PostureTracker only when requested, saving 400MB RAM and avoiding boot delays."""
+    global _tracker
+    if _tracker is None:
+        from .tracker import PostureTracker
+        _tracker = PostureTracker(model_complexity=0)
+    return _tracker
 
 
 def get_evaluator() -> PostureEvaluator:

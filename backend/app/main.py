@@ -32,8 +32,12 @@ async def lifespan(app: FastAPI):
     logger.info("SQLite database tables verified/created.")
     yield
     logger.info("Shutting down Posture Monitor Backend service...")
-    tracker = get_tracker()
-    tracker.close()
+    try:
+        from .core.state import _tracker
+        if _tracker is not None:
+            _tracker.close()
+    except Exception:
+        pass
 
 
 app = FastAPI(
